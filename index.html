@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Écart de Sets — Analyseur de tendance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --court: #16332A;
+    --court-2: #1F4438;
+    --panel: #244A3D;
+    --clay: #C05A34;
+    --clay-dim: #8C4327;
+    --chalk: #F3EFE4;
+    --chalk-dim: #B9C7BE;
+    --ball: #D8E75A;
+    --line: rgba(243,239,228,0.14);
+    --danger: #D96B5A;
+    --good: #9FCB6E;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(243,239,228,0.025) 39px, rgba(243,239,228,0.025) 40px),
+      var(--court);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:28px 16px 60px;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ball);
+    margin-bottom:6px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .status-dot{width:7px;height:7px;border-radius:50%;background:var(--chalk-dim);display:inline-block;}
+  .status-dot.ok{background:var(--good);}
+  .status-dot.err{background:var(--danger);}
+  h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:700;
+    font-size:clamp(28px,5vw,42px);
+    letter-spacing:0.01em;
+    margin:0 0 8px;
+    text-transform:uppercase;
+  }
+  header p{
+    color:var(--chalk-dim);
+    font-size:14px;
+    line-height:1.5;
+    max-width:60ch;
+    margin:0;
+  }
+
+  .context-bar{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-bottom:none;
+    border-radius:4px 4px 0 0;
+    padding:16px 20px;
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:18px;
+  }
+  @media(max-width:720px){ .context-bar{grid-template-columns:1fr;} }
+  .context-field label{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--chalk-dim);
+    margin-bottom:8px;
+  }
+  .seg{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+  .seg button{
+    flex:1;
+    background:transparent;
+    border:none;
+    border-right:1px solid var(--line);
+    color:var(--chalk-dim);
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    padding:8px 6px;
+    cursor:pointer;
+  }
+  .seg button:last-child{border-right:none;}
+  .seg button.active{background:var(--ball);color:var(--court);font-weight:600;}
+  .rank-fields{display:flex;gap:8px;align-items:center;}
+  .rank-fields input{
+    width:100%;
+    background:var(--court-2);
+    border:1px solid var(--line);
+    border-radius:3px;
+    color:var(--chalk);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    padding:8px;
+    text-align:center;
+  }
+  .rank-fields input:focus{outline:none;border-color:var(--ball);}
+  .rank-fields span{color:var(--chalk-dim);font-size:11px;}
+
+  .board{
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    gap:0;
+    align-items:stretch;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:0 0 4px 4px;
+    overflow:hidden;
+  }
+  @media (max-width:720px){
+    .board{grid-template-columns:1fr;}
+    .net{display:flex;flex-direction:row;justify-content:center;padding:14px 0;}
+  }
+
+  .side{padding:22px 20px;}
+  .side.b{border-left:1px solid var(--line);}
+  @media (max-width:720px){ .side.b{border-left:none;border-top:1px solid var(--line);} }
+
+  .name-input{
+    width:100%;
+    background:transparent;
+    border:none;
+    border-bottom:2px solid var(--line);
+    color:var(--chalk);
+    font-family:'Oswald',sans-serif;
+    font-size:22px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.02em;
+    padding:4px 2px 8px;
+    margin-bottom:16px;
+  }
+  .name-input:focus{outline:none;border-bottom-color:var(--ball);}
+  .name-input::placeholder{color:var(--chalk-dim);opacity:0.5;}
+
+  .match-row{
+    display:grid;
+    grid-template-columns:1fr auto auto auto;
+    gap:8px;
+    align-items:center;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .match-row:last-of-type{border-bottom:none;}
+  .match-idx{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--chalk-dim);
+    width:16px;
+  }
+  .score-inputs{display:flex;align-items:center;gap:4px;}
+  .score-inputs input{
+    width:38px;
+    background:var(--court-2);
+    border:1px solid var(--line);
+    border-radius:3px;
+    color:var(--chalk);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:14px;
+    text-align:center;
+    padding:5px 2px;
+  }
+  .score-inputs input:focus{outline:none;border-color:var(--ball);}
+  .score-inputs span{color:var(--chalk-dim);font-size:12px;}
+
+  .result-toggle{display:flex;gap:4px;}
+  .result-toggle button{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.05em;
+    padding:6px 8px;
+    border-radius:3px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--chalk-dim);
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .result-toggle button.active.win{background:var(--good);border-color:var(--good);color:#16332A;}
+  .result-toggle button.active.loss{background:var(--danger);border-color:var(--danger);color:#16332A;}
+
+  .diff-badge{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    font-weight:600;
+    width:32px;
+    text-align:right;
+  }
+  .diff-badge.pos{color:var(--good);}
+  .diff-badge.neg{color:var(--danger);}
+  .diff-badge.zero{color:var(--chalk-dim);}
+
+  .side-summary{
+    margin-top:18px;
+    padding-top:14px;
+    border-top:1px dashed var(--line);
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+  }
+  .side-summary .total{
+    font-family:'Oswald',sans-serif;
+    font-size:34px;
+    font-weight:700;
+  }
+  .side-summary .record{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    color:var(--chalk-dim);
+  }
+
+  .net{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:0 18px;
+    position:relative;
+    gap:10px;
+  }
+  .net::before{
+    content:"";
+    position:absolute;
+    top:20px;bottom:20px;left:50%;
+    width:0;
+    border-left:2px dashed var(--line);
+  }
+  @media(max-width:720px){ .net::before{display:none;} }
+  .net .vs{
+    font-family:'Oswald',sans-serif;
+    font-size:13px;
+    letter-spacing:0.15em;
+    color:var(--ball);
+    background:var(--court);
+    padding:8px 6px;
+    border-radius:50%;
+    width:34px;height:34px;
+    display:flex;align-items:center;justify-content:center;
+    z-index:1;
+    border:1px solid var(--line);
+  }
+  .gap-readout{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--chalk-dim);
+    text-align:center;
+    z-index:1;
+    background:var(--court);
+    padding:4px 8px;
+  }
+
+  .actions{
+    display:flex;
+    gap:10px;
+    margin-top:20px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .btn{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:0.05em;
+    padding:10px 16px;
+    border-radius:3px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--chalk);
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .btn:hover{border-color:var(--ball);color:var(--ball);}
+  .btn.primary{background:var(--clay);border-color:var(--clay);color:var(--chalk);}
+  .btn.primary:hover{background:var(--clay-dim);color:var(--chalk);}
+  .save-msg{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--chalk-dim);}
+  .save-msg.err{color:var(--danger);}
+  .save-msg.ok{color:var(--good);}
+
+  .history{margin-top:36px;}
+  .history h2, .pattern-section h2{
+    font-family:'Oswald',sans-serif;
+    font-size:16px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--chalk-dim);
+    margin:0 0 12px;
+  }
+  .history-item{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:12px 14px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    margin-bottom:8px;
+    font-size:13px;
+  }
+  .history-item .info{display:flex;flex-direction:column;gap:2px;}
+  .history-item .matchup{font-family:'Oswald',sans-serif;font-size:15px;text-transform:uppercase;}
+  .history-item .meta{color:var(--chalk-dim);font-family:'IBM Plex Mono',monospace;font-size:11px;}
+  .history-item .item-actions{display:flex;gap:6px;flex-shrink:0;}
+  .history-item button{
+    background:transparent;border:1px solid var(--line);color:var(--chalk-dim);
+    border-radius:3px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;
+  }
+  .history-item button:hover{color:var(--ball);border-color:var(--ball);}
+  .empty-note{color:var(--chalk-dim);font-size:13px;font-style:italic;}
+
+  .pattern-section{margin-top:36px;}
+  .pattern-section .sub{font-size:12px;color:var(--chalk-dim);margin-bottom:14px;}
+  .min-support-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:16px;
+    font-size:12px;
+    color:var(--chalk-dim);
+  }
+  .min-support-row input{
+    width:56px;
+    background:var(--court-2);
+    border:1px solid var(--line);
+    border-radius:3px;
+    color:var(--chalk);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    padding:6px;
+    text-align:center;
+  }
+  .pattern-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:14px 16px;
+    margin-bottom:8px;
+  }
+  .pattern-card .conditions{font-size:13px;line-height:1.5;margin-bottom:8px;}
+  .pattern-card .conditions .cond{
+    display:inline-block;
+    background:var(--court-2);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:3px 8px;
+    margin:2px 4px 2px 0;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+  }
+  .pattern-card .verdict{display:flex;justify-content:space-between;align-items:baseline;}
+  .pattern-card .verdict-text{font-size:14px;font-weight:600;}
+  .pattern-card .verdict-text.outsider{color:var(--ball);}
+  .pattern-card .verdict-text.favori{color:var(--good);}
+  .pattern-card .verdict-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--chalk-dim);}
+  .baseline-note{font-size:11px;color:var(--chalk-dim);margin-bottom:14px;font-family:'IBM Plex Mono',monospace;}
+
+  .disclaimer{
+    margin-top:32px;
+    font-size:12px;
+    color:var(--chalk-dim);
+    border-top:1px solid var(--line);
+    padding-top:14px;
+    line-height:1.5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow"><span class="status-dot" id="statusDot"></span><span id="statusText">Connexion à Supabase…</span></div>
+    <h1>Écart de premier set</h1>
+    <p>Entre les scores du premier set des 5 derniers matchs de chaque joueur (ex. 6-3, 7-6), le favori, le classement, et le vainqueur réel. L'outil calcule les écarts et fait ressortir les combinaisons de conditions qui reviennent le plus souvent.</p>
+  </header>
+
+  <div class="context-bar">
+    <div class="context-field">
+      <label>Favori (avant match)</label>
+      <div class="seg" id="favSeg">
+        <button data-val="A" id="favBtnA">Joueur A</button>
+        <button data-val="none" id="favBtnNone">Aucun</button>
+        <button data-val="B" id="favBtnB">Joueur B</button>
+      </div>
+    </div>
+    <div class="context-field">
+      <label>Classement (plus petit = mieux classé)</label>
+      <div class="rank-fields">
+        <input type="number" id="rankA" placeholder="A: 45" />
+        <span>vs</span>
+        <input type="number" id="rankB" placeholder="B: 112" />
+      </div>
+    </div>
+    <div class="context-field">
+      <label>Vainqueur réel du match</label>
+      <div class="seg" id="winSeg">
+        <button data-val="A" id="winBtnA">Joueur A</button>
+        <button data-val="B" id="winBtnB">Joueur B</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="side a">
+      <input class="name-input" id="nameA" placeholder="Joueur A" />
+      <div id="matchesA"></div>
+      <div class="side-summary">
+        <div>
+          <div class="total" id="totalA">0</div>
+          <div class="record" id="recordA">0V — 0D</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="net">
+      <div class="vs">VS</div>
+      <div class="gap-readout" id="gapReadout">écart 0</div>
+    </div>
+
+    <div class="side b">
+      <input class="name-input" id="nameB" placeholder="Joueur B" />
+      <div id="matchesB"></div>
+      <div class="side-summary">
+        <div>
+          <div class="total" id="totalB">0</div>
+          <div class="record" id="recordB">0V — 0D</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="saveBtn">Sauvegarder ce face-à-face</button>
+    <button class="btn" id="resetBtn">Réinitialiser</button>
+    <span class="save-msg" id="saveMsg"></span>
+  </div>
+
+  <div class="history">
+    <h2>Historique (Supabase)</h2>
+    <div id="historyList"></div>
+  </div>
+
+  <div class="pattern-section">
+    <h2>Analyse des patterns</h2>
+    <div class="sub">L'outil croise automatiquement plusieurs conditions (écart, ampleur, défaites, classement) et affiche les combinaisons qui ressortent le plus, dans les deux sens (favori / outsider).</div>
+    <div class="min-support-row">
+      <label for="minSupport">Nombre minimum de cas pour qu'un pattern compte :</label>
+      <input type="number" id="minSupport" min="2" value="3" />
+    </div>
+    <div id="patternList"></div>
+  </div>
+
+  <div class="disclaimer">
+    Cet outil calcule et croise tes données — il n'a aucune notion de tennis ni de probabilité réelle. Avec peu de face-à-face sauvegardés, un pattern à 100% peut n'être qu'une coïncidence sur 3 cas : regarde toujours le nombre de cas avant de faire confiance à un pourcentage.
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://smukymittiagdivppblk.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtdWt5bWl0dGlhZ2RpdnBwYmxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNjQ3MTYsImV4cCI6MjA4Nzk0MDcxNn0.wobc_-76HeUph69H3qsBpgCUbRXPin5JZptO767t89w";
+const TABLE = "tennis_matchups";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let state = {
+  nameA: "",
+  nameB: "",
+  matchesA: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
+  matchesB: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
+  favorite: null,
+  rankA: "",
+  rankB: "",
+  actualWinner: null,
+};
+
+function diffFor(m){
+  if(m.g1 === "" || m.g2 === "" || isNaN(m.g1) || isNaN(m.g2)) return null;
+  return parseInt(m.g1) - parseInt(m.g2);
+}
+
+function renderMatches(containerId, matches){
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  matches.forEach((m, i) => {
+    const row = document.createElement("div");
+    row.className = "match-row";
+
+    const idx = document.createElement("div");
+    idx.className = "match-idx";
+    idx.textContent = (i+1) + ".";
+    row.appendChild(idx);
+
+    const scoreWrap = document.createElement("div");
+    scoreWrap.className = "score-inputs";
+    const g1 = document.createElement("input");
+    g1.type = "number"; g1.min="0"; g1.max="7"; g1.value = m.g1;
+    g1.placeholder = "6";
+    g1.addEventListener("input", e => { m.g1 = e.target.value; recalc(); });
+    const dash = document.createElement("span");
+    dash.textContent = "–";
+    const g2 = document.createElement("input");
+    g2.type = "number"; g2.min="0"; g2.max="7"; g2.value = m.g2;
+    g2.placeholder = "3";
+    g2.addEventListener("input", e => { m.g2 = e.target.value; recalc(); });
+    scoreWrap.appendChild(g1); scoreWrap.appendChild(dash); scoreWrap.appendChild(g2);
+    row.appendChild(scoreWrap);
+
+    const toggle = document.createElement("div");
+    toggle.className = "result-toggle";
+    const winBtn = document.createElement("button");
+    winBtn.textContent = "V";
+    winBtn.className = m.result === "win" ? "active win" : "";
+    winBtn.addEventListener("click", () => { m.result = m.result === "win" ? null : "win"; recalc(); });
+    const lossBtn = document.createElement("button");
+    lossBtn.textContent = "D";
+    lossBtn.className = m.result === "loss" ? "active loss" : "";
+    lossBtn.addEventListener("click", () => { m.result = m.result === "loss" ? null : "loss"; recalc(); });
+    toggle.appendChild(winBtn); toggle.appendChild(lossBtn);
+    row.appendChild(toggle);
+
+    const d = diffFor(m);
+    const badge = document.createElement("div");
+    badge.className = "diff-badge " + (d === null ? "zero" : d > 0 ? "pos" : d < 0 ? "neg" : "zero");
+    badge.textContent = d === null ? "—" : (d > 0 ? "+" + d : d);
+    row.appendChild(badge);
+
+    container.appendChild(row);
+  });
+}
+
+function renderContextBar(){
+  document.getElementById("favBtnA").classList.toggle("active", state.favorite === "A");
+  document.getElementById("favBtnNone").classList.toggle("active", state.favorite === "none");
+  document.getElementById("favBtnB").classList.toggle("active", state.favorite === "B");
+  document.getElementById("winBtnA").classList.toggle("active", state.actualWinner === "A");
+  document.getElementById("winBtnB").classList.toggle("active", state.actualWinner === "B");
+  document.getElementById("rankA").value = state.rankA;
+  document.getElementById("rankB").value = state.rankB;
+}
+
+function recalc(){
+  renderMatches("matchesA", state.matchesA);
+  renderMatches("matchesB", state.matchesB);
+
+  const totalA = state.matchesA.reduce((sum,m) => sum + (diffFor(m) ?? 0), 0);
+  const totalB = state.matchesB.reduce((sum,m) => sum + (diffFor(m) ?? 0), 0);
+  document.getElementById("totalA").textContent = (totalA > 0 ? "+" : "") + totalA;
+  document.getElementById("totalB").textContent = (totalB > 0 ? "+" : "") + totalB;
+
+  const winsA = state.matchesA.filter(m => m.result === "win").length;
+  const lossA = state.matchesA.filter(m => m.result === "loss").length;
+  const winsB = state.matchesB.filter(m => m.result === "win").length;
+  const lossB = state.matchesB.filter(m => m.result === "loss").length;
+  document.getElementById("recordA").textContent = winsA + "V — " + lossA + "D";
+  document.getElementById("recordB").textContent = winsB + "V — " + lossB + "D";
+
+  const gap = Math.abs(totalA - totalB);
+  document.getElementById("gapReadout").textContent = "écart " + gap;
+
+  renderContextBar();
+  saveDraftLocal();
+}
+
+function saveDraftLocal(){
+  state.nameA = document.getElementById("nameA").value;
+  state.nameB = document.getElementById("nameB").value;
+  try{
+    localStorage.setItem("ecart-sets-draft", JSON.stringify(state));
+  }catch(e){ /* stockage local indisponible, tant pis pour le brouillon */ }
+}
+
+function loadDraftLocal(){
+  try{
+    const raw = localStorage.getItem("ecart-sets-draft");
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed.matchesA && parsed.matchesB) state = parsed;
+    }
+  }catch(e){ /* pas de brouillon existant */ }
+  document.getElementById("nameA").value = state.nameA || "";
+  document.getElementById("nameB").value = state.nameB || "";
+  recalc();
+}
+
+document.getElementById("favBtnA").addEventListener("click", () => { state.favorite = "A"; renderContextBar(); saveDraftLocal(); });
+document.getElementById("favBtnNone").addEventListener("click", () => { state.favorite = "none"; renderContextBar(); saveDraftLocal(); });
+document.getElementById("favBtnB").addEventListener("click", () => { state.favorite = "B"; renderContextBar(); saveDraftLocal(); });
+document.getElementById("winBtnA").addEventListener("click", () => { state.actualWinner = state.actualWinner === "A" ? null : "A"; renderContextBar(); saveDraftLocal(); });
+document.getElementById("winBtnB").addEventListener("click", () => { state.actualWinner = state.actualWinner === "B" ? null : "B"; renderContextBar(); saveDraftLocal(); });
+document.getElementById("rankA").addEventListener("input", e => { state.rankA = e.target.value; saveDraftLocal(); });
+document.getElementById("rankB").addEventListener("input", e => { state.rankB = e.target.value; saveDraftLocal(); });
+
+function showSaveMsg(text, kind){
+  const el = document.getElementById("saveMsg");
+  el.textContent = text;
+  el.className = "save-msg " + (kind || "");
+  if(kind === "ok") setTimeout(() => { el.textContent = ""; }, 2500);
+}
+
+async function saveMatchup(){
+  const nameA = document.getElementById("nameA").value || "Joueur A";
+  const nameB = document.getElementById("nameB").value || "Joueur B";
+  const totalA = state.matchesA.reduce((sum,m) => sum + (diffFor(m) ?? 0), 0);
+  const totalB = state.matchesB.reduce((sum,m) => sum + (diffFor(m) ?? 0), 0);
+  const winsA = state.matchesA.filter(m => m.result === "win").length;
+  const lossA = state.matchesA.filter(m => m.result === "loss").length;
+  const winsB = state.matchesB.filter(m => m.result === "win").length;
+  const lossB = state.matchesB.filter(m => m.result === "loss").length;
+
+  const payload = {
+    name_a: nameA, name_b: nameB,
+    total_a: totalA, total_b: totalB,
+    wins_a: winsA, loss_a: lossA, wins_b: winsB, loss_b: lossB,
+    favorite: state.favorite || null,
+    rank_a: state.rankA ? parseInt(state.rankA) : null,
+    rank_b: state.rankB ? parseInt(state.rankB) : null,
+    actual_winner: state.actualWinner || null,
+    matches_a: state.matchesA,
+    matches_b: state.matchesB,
+  };
+
+  showSaveMsg("Enregistrement…", "");
+  const { error } = await sb.from(TABLE).insert(payload);
+  if(error){
+    console.error(error);
+    showSaveMsg("Erreur : " + error.message, "err");
+    return;
+  }
+  showSaveMsg("Sauvegardé ✓", "ok");
+  renderHistory();
+  renderPatternAnalysis();
+}
+
+async function getAllHistoryRecords(){
+  const { data, error } = await sb.from(TABLE).select("*").order("created_at", { ascending: false });
+  if(error){ console.error(error); return []; }
+  return data.map(row => ({
+    id: row.id,
+    nameA: row.name_a, nameB: row.name_b,
+    totalA: row.total_a, totalB: row.total_b,
+    winsA: row.wins_a, lossA: row.loss_a,
+    winsB: row.wins_b, lossB: row.loss_b,
+    recordA: row.wins_a + "V-" + row.loss_a + "D",
+    recordB: row.wins_b + "V-" + row.loss_b + "D",
+    favorite: row.favorite,
+    rankA: row.rank_a, rankB: row.rank_b,
+    actualWinner: row.actual_winner,
+    matchesA: row.matches_a, matchesB: row.matches_b,
+    date: row.created_at,
+  }));
+}
+
+async function renderHistory(){
+  const listEl = document.getElementById("historyList");
+  const records = await getAllHistoryRecords();
+
+  if(records.length === 0){
+    listEl.innerHTML = '<div class="empty-note">Aucun face-à-face sauvegardé pour l\'instant.</div>';
+    return;
+  }
+
+  listEl.innerHTML = "";
+  records.forEach(rec => {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    const info = document.createElement("div");
+    info.className = "info";
+    const matchup = document.createElement("div");
+    matchup.className = "matchup";
+    matchup.textContent = rec.nameA + " vs " + rec.nameB;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const d = new Date(rec.date);
+    const favLabel = rec.favorite === "A" ? rec.nameA + " favori" : rec.favorite === "B" ? rec.nameB + " favori" : "pas de favori";
+    const rankLabel = (rec.rankA || rec.rankB) ? ("classt " + (rec.rankA || "?") + " vs " + (rec.rankB || "?")) : "";
+    const winLabel = rec.actualWinner ? ("vainqueur: " + (rec.actualWinner === "A" ? rec.nameA : rec.nameB)) : "vainqueur non renseigné";
+    meta.textContent = (rec.totalA>0?"+":"") + rec.totalA + " (" + rec.recordA + ")  vs  " + (rec.totalB>0?"+":"") + rec.totalB + " (" + rec.recordB + ")  ·  " + favLabel + (rankLabel ? "  ·  " + rankLabel : "") + "  ·  " + winLabel + "  ·  " + d.toLocaleDateString("fr-FR");
+    info.appendChild(matchup); info.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+    const loadBtn = document.createElement("button");
+    loadBtn.textContent = "Charger";
+    loadBtn.addEventListener("click", () => {
+      state = {
+        nameA: rec.nameA, nameB: rec.nameB,
+        matchesA: rec.matchesA, matchesB: rec.matchesB,
+        favorite: rec.favorite || null,
+        rankA: rec.rankA != null ? String(rec.rankA) : "",
+        rankB: rec.rankB != null ? String(rec.rankB) : "",
+        actualWinner: rec.actualWinner || null,
+      };
+      document.getElementById("nameA").value = rec.nameA;
+      document.getElementById("nameB").value = rec.nameB;
+      recalc();
+      window.scrollTo({top:0, behavior:"smooth"});
+    });
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "Supprimer";
+    delBtn.addEventListener("click", async () => {
+      const { error } = await sb.from(TABLE).delete().eq("id", rec.id);
+      if(error){ console.error(error); alert("Erreur de suppression : " + error.message); return; }
+      renderHistory();
+      renderPatternAnalysis();
+    });
+    actions.appendChild(loadBtn); actions.appendChild(delBtn);
+
+    item.appendChild(info); item.appendChild(actions);
+    listEl.appendChild(item);
+  });
+}
+
+function computeFeatures(r){
+  if(r.favorite !== "A" && r.favorite !== "B") return null;
+  if(r.actualWinner !== "A" && r.actualWinner !== "B") return null;
+
+  const favSide = r.favorite;
+  const totalFav = favSide === "A" ? r.totalA : r.totalB;
+  const totalDog = favSide === "A" ? r.totalB : r.totalA;
+  const lossFav = favSide === "A" ? r.lossA : r.lossB;
+  const lossDog = favSide === "A" ? r.lossB : r.lossA;
+  const rankFavRaw = favSide === "A" ? r.rankA : r.rankB;
+  const rankDogRaw = favSide === "A" ? r.rankB : r.rankA;
+
+  const gapAbs = Math.abs((totalFav||0) - (totalDog||0));
+
+  let ecartCote;
+  if(totalFav === totalDog) ecartCote = "égalité";
+  else ecartCote = totalFav > totalDog ? "favori" : "outsider";
+
+  let ecartAmpleur;
+  if(gapAbs === 0) ecartAmpleur = "0";
+  else if(gapAbs <= 2) ecartAmpleur = "1-2";
+  else if(gapAbs <= 5) ecartAmpleur = "3-5";
+  else if(gapAbs <= 8) ecartAmpleur = "6-8";
+  else ecartAmpleur = "9+";
+
+  let bilanDefaites;
+  if(lossFav === lossDog) bilanDefaites = "égalité";
+  else bilanDefaites = lossFav > lossDog ? "favori" : "outsider";
+
+  let classement = null;
+  const rF = parseInt(rankFavRaw), rD = parseInt(rankDogRaw);
+  if(!isNaN(rF) && !isNaN(rD) && rF !== rD){
+    classement = rF < rD ? "favori" : "outsider";
+  }
+
+  const outcome = r.actualWinner === favSide ? "favori" : "outsider";
+
+  return { ecartCote, ecartAmpleur, bilanDefaites, classement, outcome };
+}
+
+const FEATURE_KEYS = ["ecartCote", "ecartAmpleur", "bilanDefaites", "classement"];
+const FEATURE_LABELS = {
+  ecartCote: (val) => val === "égalité" ? "écart cumulé nul entre les deux" : "écart cumulé favorable au " + val,
+  ecartAmpleur: (val) => "ampleur de l'écart cumulé : " + val + " jeux",
+  bilanDefaites: (val) => val === "égalité" ? "même nombre de défaites sur les 5 derniers matchs" : "plus de défaites chez le " + val,
+  classement: (val) => "mieux classé : le " + val,
+};
+
+function getNonEmptySubsets(arr){
+  const subsets = [];
+  const n = arr.length;
+  for(let mask = 1; mask < (1 << n); mask++){
+    const subset = [];
+    for(let i = 0; i < n; i++){ if(mask & (1 << i)) subset.push(arr[i]); }
+    subsets.push(subset);
+  }
+  return subsets;
+}
+
+function minePatterns(records, minSupport){
+  const featureData = records.map(computeFeatures).filter(Boolean);
+  const totalCases = featureData.length;
+  const baselineOutsiderWins = featureData.filter(f => f.outcome === "outsider").length;
+  const baselineRate = totalCases ? baselineOutsiderWins / totalCases : 0;
+
+  const subsets = getNonEmptySubsets(FEATURE_KEYS);
+  const results = [];
+
+  subsets.forEach(subset => {
+    const groups = {};
+    featureData.forEach(f => {
+      if(subset.some(k => f[k] === null || f[k] === undefined)) return;
+      const key = subset.map(k => k + ":" + f[k]).join("|");
+      if(!groups[key]) groups[key] = { count: 0, outsiderWins: 0, values: subset.map(k => ({ key: k, val: f[k] })) };
+      groups[key].count++;
+      if(f.outcome === "outsider") groups[key].outsiderWins++;
+    });
+    Object.values(groups).forEach(g => {
+      if(g.count < minSupport) return;
+      const rate = g.outsiderWins / g.count;
+      results.push({
+        values: g.values,
+        count: g.count,
+        outsiderWins: g.outsiderWins,
+        rate,
+        deviation: Math.abs(rate - baselineRate),
+      });
+    });
+  });
+
+  results.sort((a, b) => (b.deviation - a.deviation) || (b.count - a.count));
+  return { results, baselineRate, totalCases };
+}
+
+async function renderPatternAnalysis(){
+  const listEl = document.getElementById("patternList");
+  const minSupport = Math.max(2, parseInt(document.getElementById("minSupport").value) || 3);
+
+  const allRecords = await getAllHistoryRecords();
+  const { results, baselineRate, totalCases } = minePatterns(allRecords, minSupport);
+
+  if(totalCases === 0){
+    listEl.innerHTML = '<div class="empty-note">Sauvegarde des face-à-face avec favori et vainqueur réel renseignés pour que les patterns apparaissent ici.</div>';
+    return;
+  }
+
+  const baselineNote = document.createElement("div");
+  baselineNote.className = "baseline-note";
+  baselineNote.textContent = "Base : sur " + totalCases + " cas renseignés, l'outsider gagne " + Math.round(baselineRate * 100) + "% du temps.";
+  listEl.innerHTML = "";
+  listEl.appendChild(baselineNote);
+
+  if(results.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "empty-note";
+    empty.textContent = "Aucune combinaison n'atteint encore " + minSupport + " cas. Ajoute plus de face-à-face, ou baisse le seuil ci-dessus.";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  results.slice(0, 15).forEach(res => {
+    const card = document.createElement("div");
+    card.className = "pattern-card";
+
+    const conditions = document.createElement("div");
+    conditions.className = "conditions";
+    res.values.forEach(v => {
+      const cond = document.createElement("span");
+      cond.className = "cond";
+      cond.textContent = FEATURE_LABELS[v.key](v.val);
+      conditions.appendChild(cond);
+    });
+    card.appendChild(conditions);
+
+    const verdict = document.createElement("div");
+    verdict.className = "verdict";
+    const verdictText = document.createElement("div");
+    const winsOutsider = res.rate >= 0.5;
+    verdictText.className = "verdict-text " + (winsOutsider ? "outsider" : "favori");
+    const pct = Math.round((winsOutsider ? res.rate : 1 - res.rate) * 100);
+    verdictText.textContent = "→ " + (winsOutsider ? "l'outsider gagne" : "le favori gagne") + " dans " + pct + "% des cas";
+    const verdictMeta = document.createElement("div");
+    verdictMeta.className = "verdict-meta";
+    verdictMeta.textContent = (winsOutsider ? res.outsiderWins : res.count - res.outsiderWins) + " / " + res.count + " cas";
+    verdict.appendChild(verdictText);
+    verdict.appendChild(verdictMeta);
+    card.appendChild(verdict);
+
+    listEl.appendChild(card);
+  });
+}
+
+document.getElementById("minSupport").addEventListener("input", renderPatternAnalysis);
+document.getElementById("nameA").addEventListener("input", recalc);
+document.getElementById("nameB").addEventListener("input", recalc);
+document.getElementById("saveBtn").addEventListener("click", saveMatchup);
+document.getElementById("resetBtn").addEventListener("click", () => {
+  state = {
+    nameA: "", nameB: "",
+    matchesA: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
+    matchesB: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
+    favorite: null, rankA: "", rankB: "", actualWinner: null,
+  };
+  document.getElementById("nameA").value = "";
+  document.getElementById("nameB").value = "";
+  recalc();
+});
+
+async function checkConnection(){
+  const dot = document.getElementById("statusDot");
+  const text = document.getElementById("statusText");
+  const { error } = await sb.from(TABLE).select("id", { count: "exact", head: true });
+  if(error){
+    dot.className = "status-dot err";
+    text.textContent = "Supabase non connecté (" + error.message + ")";
+  } else {
+    dot.className = "status-dot ok";
+    text.textContent = "Connecté à Supabase";
+  }
+}
+
+loadDraftLocal();
+checkConnection();
+renderHistory();
+renderPatternAnalysis();
+</script>
+</body>
+</html>
