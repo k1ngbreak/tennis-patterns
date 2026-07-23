@@ -72,7 +72,7 @@
     border-radius:4px 4px 0 0;
     padding:16px 20px;
     display:grid;
-    grid-template-columns:1fr 1fr 1fr;
+    grid-template-columns:1fr 1fr 1fr 1fr;
     gap:18px;
   }
   @media(max-width:720px){ .context-bar{grid-template-columns:1fr;} }
@@ -385,7 +385,7 @@
   <header>
     <div class="eyebrow"><span class="status-dot" id="statusDot"></span><span id="statusText">Connexion à Supabase…</span></div>
     <h1>Écart de premier set</h1>
-    <p>Entre les scores du premier set des 5 derniers matchs de chaque joueur (ex. 6-3, 7-6), le favori, le classement, et le vainqueur réel. L'outil calcule les écarts et fait ressortir les combinaisons de conditions qui reviennent le plus souvent.</p>
+    <p>Entre les scores du premier set des 5 derniers matchs de chaque joueur (ex. 6-3, 7-6), le favori, le classement, l'historique des confrontations directes (H2H), et le vainqueur réel. L'outil calcule les écarts et fait ressortir les combinaisons de conditions qui reviennent le plus souvent.</p>
   </header>
 
   <div class="context-bar">
@@ -403,6 +403,14 @@
         <input type="number" id="rankA" placeholder="A: 45" />
         <span>vs</span>
         <input type="number" id="rankB" placeholder="B: 112" />
+      </div>
+    </div>
+    <div class="context-field">
+      <label>H2H (victoires passées l'un contre l'autre)</label>
+      <div class="rank-fields">
+        <input type="number" id="h2hA" placeholder="A: 3" min="0" />
+        <span>vs</span>
+        <input type="number" id="h2hB" placeholder="B: 1" min="0" />
       </div>
     </div>
     <div class="context-field">
@@ -456,7 +464,7 @@
 
   <div class="pattern-section">
     <h2>Analyse des patterns</h2>
-    <div class="sub">L'outil croise automatiquement plusieurs conditions (écart, ampleur, défaites, classement) et affiche les combinaisons qui ressortent le plus, dans les deux sens (favori / outsider).</div>
+    <div class="sub">L'outil croise automatiquement plusieurs conditions (écart, ampleur, défaites, classement, H2H) et affiche les combinaisons qui ressortent le plus, dans les deux sens (favori / outsider).</div>
     <div class="min-support-row">
       <label for="minSupport">Nombre minimum de cas pour qu'un pattern compte :</label>
       <input type="number" id="minSupport" min="2" value="3" />
@@ -484,6 +492,8 @@ let state = {
   favorite: null,
   rankA: "",
   rankB: "",
+  h2hA: "",
+  h2hB: "",
   actualWinner: null,
 };
 
@@ -550,6 +560,8 @@ function renderContextBar(){
   document.getElementById("winBtnB").classList.toggle("active", state.actualWinner === "B");
   document.getElementById("rankA").value = state.rankA;
   document.getElementById("rankB").value = state.rankB;
+  document.getElementById("h2hA").value = state.h2hA;
+  document.getElementById("h2hB").value = state.h2hB;
 }
 
 function recalc(){
@@ -603,6 +615,8 @@ document.getElementById("winBtnA").addEventListener("click", () => { state.actua
 document.getElementById("winBtnB").addEventListener("click", () => { state.actualWinner = state.actualWinner === "B" ? null : "B"; renderContextBar(); saveDraftLocal(); });
 document.getElementById("rankA").addEventListener("input", e => { state.rankA = e.target.value; saveDraftLocal(); });
 document.getElementById("rankB").addEventListener("input", e => { state.rankB = e.target.value; saveDraftLocal(); });
+document.getElementById("h2hA").addEventListener("input", e => { state.h2hA = e.target.value; saveDraftLocal(); });
+document.getElementById("h2hB").addEventListener("input", e => { state.h2hB = e.target.value; saveDraftLocal(); });
 
 function showSaveMsg(text, kind){
   const el = document.getElementById("saveMsg");
@@ -628,6 +642,8 @@ async function saveMatchup(){
     favorite: state.favorite || null,
     rank_a: state.rankA ? parseInt(state.rankA) : null,
     rank_b: state.rankB ? parseInt(state.rankB) : null,
+    h2h_a: state.h2hA ? parseInt(state.h2hA) : 0,
+    h2h_b: state.h2hB ? parseInt(state.h2hB) : 0,
     actual_winner: state.actualWinner || null,
     matches_a: state.matchesA,
     matches_b: state.matchesB,
@@ -658,6 +674,7 @@ async function getAllHistoryRecords(){
     recordB: row.wins_b + "V-" + row.loss_b + "D",
     favorite: row.favorite,
     rankA: row.rank_a, rankB: row.rank_b,
+    h2hA: row.h2h_a, h2hB: row.h2h_b,
     actualWinner: row.actual_winner,
     matchesA: row.matches_a, matchesB: row.matches_b,
     date: row.created_at,
@@ -687,8 +704,9 @@ async function renderHistory(){
     const d = new Date(rec.date);
     const favLabel = rec.favorite === "A" ? rec.nameA + " favori" : rec.favorite === "B" ? rec.nameB + " favori" : "pas de favori";
     const rankLabel = (rec.rankA || rec.rankB) ? ("classt " + (rec.rankA || "?") + " vs " + (rec.rankB || "?")) : "";
+    const h2hLabel = ((rec.h2hA || 0) + (rec.h2hB || 0) > 0) ? ("H2H " + (rec.h2hA||0) + "-" + (rec.h2hB||0)) : "";
     const winLabel = rec.actualWinner ? ("vainqueur: " + (rec.actualWinner === "A" ? rec.nameA : rec.nameB)) : "vainqueur non renseigné";
-    meta.textContent = (rec.totalA>0?"+":"") + rec.totalA + " (" + rec.recordA + ")  vs  " + (rec.totalB>0?"+":"") + rec.totalB + " (" + rec.recordB + ")  ·  " + favLabel + (rankLabel ? "  ·  " + rankLabel : "") + "  ·  " + winLabel + "  ·  " + d.toLocaleDateString("fr-FR");
+    meta.textContent = (rec.totalA>0?"+":"") + rec.totalA + " (" + rec.recordA + ")  vs  " + (rec.totalB>0?"+":"") + rec.totalB + " (" + rec.recordB + ")  ·  " + favLabel + (rankLabel ? "  ·  " + rankLabel : "") + (h2hLabel ? "  ·  " + h2hLabel : "") + "  ·  " + winLabel + "  ·  " + d.toLocaleDateString("fr-FR");
     info.appendChild(matchup); info.appendChild(meta);
 
     const actions = document.createElement("div");
@@ -702,6 +720,8 @@ async function renderHistory(){
         favorite: rec.favorite || null,
         rankA: rec.rankA != null ? String(rec.rankA) : "",
         rankB: rec.rankB != null ? String(rec.rankB) : "",
+        h2hA: rec.h2hA != null ? String(rec.h2hA) : "",
+        h2hB: rec.h2hB != null ? String(rec.h2hB) : "",
         actualWinner: rec.actualWinner || null,
       };
       document.getElementById("nameA").value = rec.nameA;
@@ -759,17 +779,26 @@ function computeFeatures(r){
     classement = rF < rD ? "favori" : "outsider";
   }
 
+  let h2h = null;
+  const h2hFavRaw = favSide === "A" ? r.h2hA : r.h2hB;
+  const h2hDogRaw = favSide === "A" ? r.h2hB : r.h2hA;
+  const hF = parseInt(h2hFavRaw), hD = parseInt(h2hDogRaw);
+  if(!isNaN(hF) && !isNaN(hD) && (hF + hD) > 0){
+    h2h = hF === hD ? "égalité" : (hF > hD ? "favori" : "outsider");
+  }
+
   const outcome = r.actualWinner === favSide ? "favori" : "outsider";
 
-  return { ecartCote, ecartAmpleur, bilanDefaites, classement, outcome };
+  return { ecartCote, ecartAmpleur, bilanDefaites, classement, h2h, outcome };
 }
 
-const FEATURE_KEYS = ["ecartCote", "ecartAmpleur", "bilanDefaites", "classement"];
+const FEATURE_KEYS = ["ecartCote", "ecartAmpleur", "bilanDefaites", "classement", "h2h"];
 const FEATURE_LABELS = {
   ecartCote: (val) => val === "égalité" ? "écart cumulé nul entre les deux" : "écart cumulé favorable au " + val,
   ecartAmpleur: (val) => "ampleur de l'écart cumulé : " + val + " jeux",
   bilanDefaites: (val) => val === "égalité" ? "même nombre de défaites sur les 5 derniers matchs" : "plus de défaites chez le " + val,
   classement: (val) => "mieux classé : le " + val,
+  h2h: (val) => val === "égalité" ? "confrontations passées à égalité" : "confrontations passées à l'avantage du " + val,
 };
 
 function getNonEmptySubsets(arr){
@@ -885,7 +914,7 @@ document.getElementById("resetBtn").addEventListener("click", () => {
     nameA: "", nameB: "",
     matchesA: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
     matchesB: Array.from({length:5}, () => ({g1:"", g2:"", result:null})),
-    favorite: null, rankA: "", rankB: "", actualWinner: null,
+    favorite: null, rankA: "", rankB: "", h2hA: "", h2hB: "", actualWinner: null,
   };
   document.getElementById("nameA").value = "";
   document.getElementById("nameB").value = "";
